@@ -25,6 +25,16 @@ form#f{display:flex;gap:8px;padding:8px 8px max(8px,env(safe-area-inset-bottom))
 textarea{flex:1;border:0;border-radius:20px;padding:10px 14px;font:inherit;background:var(--in);color:var(--tx);resize:none;max-height:140px;outline:0}
 #send{width:44px;height:44px;border-radius:50%;border:0;background:var(--ac);color:#fff;font-size:20px;cursor:pointer;flex:none}
 .chips{display:flex;gap:6px;padding:6px 8px 0;background:var(--bar);overflow-x:auto}.chips button{border:1px solid rgba(128,128,128,.35);background:var(--in);color:var(--tx);border-radius:14px;padding:3px 10px;font-size:12.5px;white-space:nowrap;cursor:pointer}
+.clip{width:40px;height:40px;border-radius:50%;border:0;background:none;color:var(--sub);font-size:20px;cursor:pointer;flex:none}
+#pend{display:none;gap:8px;padding:8px 8px 0;background:var(--bar);overflow-x:auto}#pend.on{display:flex}
+.pc{position:relative;flex:none;width:58px;height:58px;border-radius:8px;background:var(--in);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;color:var(--sub);overflow:hidden;border:1px solid rgba(128,128,128,.25)}
+.pc img{width:100%;height:100%;object-fit:cover}.pc span{padding:0 3px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc i{position:absolute;top:1px;right:1px;width:17px;height:17px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-style:normal;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.pc.up{opacity:.55}
+.atts{display:flex;flex-direction:column;gap:6px;margin-bottom:4px}
+.at-img{display:block;max-width:220px;max-height:220px;border-radius:6px;object-fit:cover}
+.at-f{display:flex;align-items:center;gap:8px;background:rgba(128,128,128,.12);border-radius:8px;padding:6px 8px;text-decoration:none;color:inherit;max-width:260px}
+.at-f .ic{font-size:20px}.at-f .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.at-f .sz{font-size:11px;color:var(--sub)}
 #login{position:fixed;inset:0;background:var(--bg);display:grid;place-items:center;padding:20px;z-index:9}
 #login form{background:var(--in);padding:26px;border-radius:14px;width:min(360px,100%);display:flex;flex-direction:column;gap:12px;box-shadow:0 4px 24px rgba(0,0,0,.15)}
 #login .av{margin:0 auto;width:64px;height:64px;font-size:30px;color:#fff}#login h1{margin:0;text-align:center;font-size:20px}
@@ -44,7 +54,10 @@ textarea{flex:1;border:0;border-radius:20px;padding:10px 14px;font:inherit;backg
 <button id="bm" title="Memori">🧠</button><button id="bc" title="Bersihkan chat">🗑</button><button id="bo" title="Keluar">⎋</button></header>
 <div id="msgs"></div>
 <div class="chips" id="chips"></div>
-<form id="f"><textarea id="in" rows="1" placeholder="Ketik perintah untuk Hermes…" enterkeyhint="send"></textarea><button id="send" type="submit">➤</button></form>
+<div id="pend"></div>
+<form id="f"><input id="fl" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,image/*" style="display:none">
+<button id="clip" type="button" class="clip" title="Lampirkan file/gambar/link">📎</button>
+<textarea id="in" rows="1" placeholder="Ketik perintah untuk Hermes…" enterkeyhint="send"></textarea><button id="send" type="submit">➤</button></form>
 <div id="mem"><header><button id="mb">←</button><div class="t"><b>Memori Hermes</b><small>tersimpan di Supabase · tersinkron dua arah dengan Mac</small></div></header><div class="bd" id="mbd"></div></div>
 <script>
 const SB='https://bbptcxpzzvgpxqylkrmw.supabase.co/rest/v1/rpc/',KEY='sb_publishable_Ny-WHCEZ3WmcLFsPBx9QeQ_9xgo7MxR';
@@ -61,12 +74,20 @@ function out(){ss.del('hm');U=H='';clearTimeout(timer);$('#login').style.display
 $('#bo').onclick=out;
 const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function fmt(t){return esc(t).replace(/```(?:\w*\n)?([\s\S]*?)```/g,'<pre>$1</pre>').replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g,'<b>$1</b>')}
+const human=n=>!n?'':n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB';
+const ICON={pdf:'📄',doc:'📝',docx:'📝',xls:'📊',xlsx:'📊',csv:'📊',txt:'📄'};
+function fmtAtts(atts){if(!atts||!atts.length)return'';return '<div class="atts">'+atts.map(a=>{
+  if(a.type==='image')return `<a href="${esc(a.url)}" target="_blank" rel="noopener"><img class="at-img" src="${esc(a.url)}" loading="lazy"></a>`;
+  if(a.type==='link')return `<a class="at-f" href="${esc(a.url)}" target="_blank" rel="noopener"><span class="ic">🔗</span><span class="nm">${esc(a.name||a.url)}</span></a>`;
+  const ext=(a.name||'').split('.').pop().toLowerCase();
+  return `<a class="at-f" href="${esc(a.url)}" target="_blank" rel="noopener"><span class="ic">${ICON[ext]||'📎'}</span><span><div class="nm">${esc(a.name||'file')}</div><div class="sz">${human(a.size)}</div></span></a>`;
+}).join('')+'</div>'}
 const hm=ts=>new Date(ts).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),dk=ts=>new Date(ts).toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long'});
 function render(){const box=$('#msgs'),near=box.scrollHeight-box.scrollTop-box.clientHeight<120;let h='',day='',run=false;
  for(const m of [...rows.values()].sort((a,b)=>a.id-b.id)){const d=dk(m.ts);if(d!==day){day=d;h+=`<div class="day">${d}</div>`}
   if(m.role==='user'){const k=m.status==='pending'?'<span class="k">✓</span>':m.status==='running'?'<span class="k">✓✓</span>':'<span class="k r">✓✓</span>';if(m.status==='running')run=true;
-   h+=`<div class="m u">${fmt(m.text)}<span class="meta">${hm(m.ts)} ${k}</span></div>`}
-  else h+=`<div class="m h ${m.status==='error'?'err':''}">${fmt(m.text)}<span class="meta">${hm(m.ts)}</span></div>`}
+   h+=`<div class="m u">${fmtAtts(m.atts)}${fmt(m.text)}<span class="meta">${hm(m.ts)} ${k}</span></div>`}
+  else h+=`<div class="m h ${m.status==='error'?'err':''}">${fmtAtts(m.atts)}${fmt(m.text)}<span class="meta">${hm(m.ts)}</span></div>`}
  if(run)h+='<div class="typing">Hermes sedang mengerjakan… <i>(/stop untuk menghentikan)</i></div>';
  box.innerHTML=h;if(near||!box.dataset.s){box.scrollTop=box.scrollHeight;box.dataset.s=1}}
 async function poll(){if(!H||busy)return;busy=true;
@@ -78,8 +99,24 @@ async function poll(){if(!H||busy)return;busy=true;
   if(ch)render()}catch{$('#st').textContent='tidak terhubung…'}finally{busy=false}
  clearTimeout(timer);timer=setTimeout(poll,document.hidden?5000:1500)}
 function start(){poll()}document.addEventListener('visibilitychange',()=>{if(!document.hidden&&H){clearTimeout(timer);poll()}});
-async function send(t){t=t.trim();if(!t||!H)return;$('#in').value='';$('#in').style.height='';
- try{const r=await rpc('hm_send',{p_u:U,p_h:H,p_text:t});if(!r.ok){out();return}last=Math.min(last,r.id-1);clearTimeout(timer);poll()}catch{$('#in').value=t;alert('Gagal mengirim.')}}
+let pend=[];
+function renderPend(){const b=$('#pend');b.classList.toggle('on',pend.length>0);
+ b.innerHTML=pend.map((a,i)=>`<div class="pc ${a.up?'up':''}">${a.type==='image'&&a.url?`<img src="${esc(a.url)}">`:`<div style="font-size:20px">${a.type==='link'?'🔗':'📎'}</div><span>${esc((a.name||'').slice(0,14))}</span>`}<i data-i="${i}">✕</i></div>`).join('')}
+$('#pend').onclick=e=>{const i=e.target.dataset.i;if(i!==undefined){pend.splice(+i,1);renderPend()}};
+async function uploadFile(file){
+ if(file.size>26214400)throw new Error('File terlalu besar (maks 25 MB): '+file.name);
+ const path=Date.now()+'-'+Math.random().toString(36).slice(2,8)+'-'+file.name.replace(/[^\w.\-]+/g,'_');
+ const r=await fetch(`https://bbptcxpzzvgpxqylkrmw.supabase.co/storage/v1/object/hermes-files/${path}`,{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':file.type||'application/octet-stream'},body:file});
+ if(!r.ok)throw new Error('Unggah gagal: '+file.name);
+ return {type:file.type.startsWith('image/')?'image':'file',name:file.name,url:`https://bbptcxpzzvgpxqylkrmw.supabase.co/storage/v1/object/public/hermes-files/${path}`,mime:file.type,size:file.size};
+}
+$('#clip').onclick=()=>{const link=confirm('OK = pilih file. Batal = lampirkan link.');if(link)$('#fl').click();else{const u=prompt('Masukkan URL link:');if(u&&u.trim())pend.push({type:'link',name:u.trim(),url:u.trim()});renderPend()}};
+$('#fl').onchange=async()=>{for(const file of [...$('#fl').files]){const slot={type:file.type.startsWith('image/')?'image':'file',name:file.name,up:true,url:file.type.startsWith('image/')?URL.createObjectURL(file):''};pend.push(slot);renderPend();
+  try{const up=await uploadFile(file);Object.assign(slot,up,{up:false})}catch(e){pend.splice(pend.indexOf(slot),1);alert(e.message)}renderPend()}
+ $('#fl').value=''};
+async function send(t){t=t.trim();if((!t&&!pend.length)||!H)return;if(pend.some(a=>a.up)){alert('Tunggu unggahan selesai.');return}
+ $('#in').value='';$('#in').style.height='';const atts=pend.map(({up,...a})=>a);pend=[];renderPend();
+ try{const r=await rpc('hm_send',{p_u:U,p_h:H,p_text:t,p_atts:atts});if(!r.ok){out();return}last=Math.min(last,r.id-1);clearTimeout(timer);poll()}catch{$('#in').value=t;pend=atts;renderPend();alert('Gagal mengirim.')}}
 $('#f').onsubmit=e=>{e.preventDefault();send($('#in').value)};
 $('#in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!/Mobi|Android/i.test(navigator.userAgent)){e.preventDefault();send($('#in').value)}});
 $('#in').addEventListener('input',e=>{e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,140)+'px'});
