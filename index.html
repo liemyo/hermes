@@ -77,10 +77,10 @@ function fmt(t){return esc(t).replace(/```(?:\w*\n)?([\s\S]*?)```/g,'<pre>$1</pr
 const human=n=>!n?'':n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB';
 const ICON={pdf:'📄',doc:'📝',docx:'📝',xls:'📊',xlsx:'📊',csv:'📊',txt:'📄'};
 function fmtAtts(atts){if(!atts||!atts.length)return'';return '<div class="atts">'+atts.map(a=>{
-  if(a.type==='image')return `<a href="${esc(a.url)}" target="_blank" rel="noopener"><img class="at-img" src="${esc(a.url)}" loading="lazy"></a>`;
+  if(a.type==='image')return `<a href="${esc(attUrl(a))}" target="_blank" rel="noopener"><img class="at-img" src="${esc(attUrl(a))}" loading="lazy"></a>`;
   if(a.type==='link')return `<a class="at-f" href="${esc(a.url)}" target="_blank" rel="noopener"><span class="ic">🔗</span><span class="nm">${esc(a.name||a.url)}</span></a>`;
   const ext=(a.name||'').split('.').pop().toLowerCase();
-  return `<a class="at-f" href="${esc(a.url)}" target="_blank" rel="noopener"><span class="ic">${ICON[ext]||'📎'}</span><span><div class="nm">${esc(a.name||'file')}</div><div class="sz">${human(a.size)}</div></span></a>`;
+  return `<a class="at-f" href="${esc(attUrl(a))}" target="_blank" rel="noopener"><span class="ic">${ICON[ext]||'📎'}</span><span><div class="nm">${esc(a.name||'file')}</div><div class="sz">${human(a.size)}</div></span></a>`;
 }).join('')+'</div>'}
 const hm=ts=>new Date(ts).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),dk=ts=>new Date(ts).toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long'});
 function render(){const box=$('#msgs'),near=box.scrollHeight-box.scrollTop-box.clientHeight<120;let h='',day='',run=false;
@@ -96,15 +96,31 @@ async function poll(){if(!H||busy)return;busy=true;
   const up=new Map(r.upd.map(x=>[x.id,x.status]));let ch=false;
   for(const m of r.rows){rows.set(m.id,m);last=Math.max(last,m.id);ch=true}
   for(const [id,s] of up){const m=rows.get(id);if(m&&m.status!==s){m.status=s;ch=true}}
-  if(ch)render()}catch{$('#st').textContent='tidak terhubung…'}finally{busy=false}
+  if(ch){render();b2Fresh()}}catch{$('#st').textContent='tidak terhubung…'}finally{busy=false}
  clearTimeout(timer);timer=setTimeout(poll,document.hidden?5000:1500)}
 function start(){poll()}document.addEventListener('visibilitychange',()=>{if(!document.hidden&&H){clearTimeout(timer);poll()}});
 let pend=[];
 function renderPend(){const b=$('#pend');b.classList.toggle('on',pend.length>0);
  b.innerHTML=pend.map((a,i)=>`<div class="pc ${a.up?'up':''}">${a.type==='image'&&a.url?`<img src="${esc(a.url)}">`:`<div style="font-size:20px">${a.type==='link'?'🔗':'📎'}</div><span>${esc((a.name||'').slice(0,14))}</span>`}<i data-i="${i}">✕</i></div>`).join('')}
 $('#pend').onclick=e=>{const i=e.target.dataset.i;if(i!==undefined){pend.splice(+i,1);renderPend()}};
+// Lampiran → Backblaze B2 (penyimpanan bersama pantau/klip-worker, situs 'hermes') lewat Supabase Edge Function simpan.
+// Pesan menyimpan {b2: path, url: tautan sementara}; agen di Mac langsung mengunduh url, chat meminta tautan baru saat tampil.
+const B2='https://bbptcxpzzvgpxqylkrmw.supabase.co/functions/v1/simpan',B2L=new Map();
+async function b2(p,o={}){const r=await fetch(B2+p,{...o,cache:'no-store',headers:{'x-site':'hermes','x-token':U+'\n'+H,...(o.headers||{})}});const j=await r.json().catch(()=>null);if(!r.ok)throw new Error('B2: '+(j?.error||r.status));return j}
+let b2Me=null,b2Ask=false;
+async function b2Sign(paths){const j=await b2('/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paths})});for(const[k,v]of Object.entries(j))B2L.set(k,{url:v,until:Date.now()+20*3600e3});return j}
+async function b2Fresh(){if(b2Ask)return;const need=[...new Set([...rows.values()].flatMap(m=>(m.atts||[]).map(a=>a.b2)).filter(p=>p&&!(B2L.get(p)?.until>Date.now())))];if(!need.length)return;b2Ask=true;try{await b2Sign(need);render()}catch{}finally{b2Ask=false}}
+const attUrl=a=>a.b2?B2L.get(a.b2)?.url||'':a.url;
 async function uploadFile(file){
  if(file.size>26214400)throw new Error('File terlalu besar (maks 25 MB): '+file.name);
+ try{b2Me||=await b2('/me');const id=b2Me.prefix+Date.now().toString(36)+Math.random().toString(36).slice(2,10);
+  if(file.size<=8388608)await b2('/o/'+id,{method:'PUT',body:file,headers:{'Content-Type':file.type||'application/octet-stream'}});
+  else{const m=await b2('/mp/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:id,size:file.size,mime:file.type})}),n=Math.ceil(file.size/m.part);
+   for(let i=0;i<n;i++)await b2(`/mp/part?id=${encodeURIComponent(m.id)}&n=${i+1}`,{method:'PUT',body:file.slice(i*m.part,(i+1)*m.part)});
+   await b2('/mp/done',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:m.id})})}
+  const url=(await b2Sign([id]))[id];
+  return {type:file.type.startsWith('image/')?'image':'file',name:file.name,b2:id,url,mime:file.type,size:file.size};
+ }catch(e){console.warn('B2 gagal, pakai penyimpanan lama:',e)}
  const path=Date.now()+'-'+Math.random().toString(36).slice(2,8)+'-'+file.name.replace(/[^\w.\-]+/g,'_');
  const r=await fetch(`https://bbptcxpzzvgpxqylkrmw.supabase.co/storage/v1/object/hermes-files/${path}`,{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':file.type||'application/octet-stream'},body:file});
  if(!r.ok)throw new Error('Unggah gagal: '+file.name);
